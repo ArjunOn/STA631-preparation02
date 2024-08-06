@@ -1,0 +1,251 @@
+---
+title: "R Project: Online Course Engagement Data Analysis"
+author: "Mallikarjuna Mannem"
+date: "`r format(Sys.Date(), '%A, %B %d, %Y')`"
+output:
+  rmdformats::readthedown:
+    css: gvsu_readthedown_theme.css
+---
+
+
+## Objectives
+
+Describe probability as a foundation of statistical modeling, including inference and maximum likelihood estimation.
+
+Determine and apply the appropriate generalized linear model for a specific data context.
+
+Conduct model selection for a set of candidate models.
+
+Communicate the results of statistical models to a general audience.
+
+## About Dataset
+
+**Description:**
+
+This dataset captures user engagement metrics from an online course platform, facilitating analyses on factors influencing course completion. It includes user demographics, course-specific data, and engagement metrics.
+
+*Source:* https://www.kaggle.com/datasets/rabieelkharoua/predict-online-course-engagement-dataset
+
+
+```{r, warning=FALSE}
+# Load necessary libraries
+library(tidyverse)
+library(ggplot2)
+library(caret)
+library(reshape2)
+library(pROC)
+```
+
+
+### Features
+
+**UserID**: Unique identifier for each user
+
+**CourseCategory**: Category of the course taken by the user (e.g., Programming, Business, Arts)
+
+**TimeSpentOnCourse**: Total time spent by the user on the course in hours
+
+**NumberOfVideosWatched**: Total number of videos watched by the user
+
+**NumberOfQuizzesTaken**: Total number of quizzes taken by the user
+
+**QuizScores**: Average scores achieved by the user in quizzes (percentage)
+
+**CompletionRate**: Percentage of course content completed by the user
+
+**DeviceType**: Type of device used by the user (Device Type: Desktop (0) or Mobile (1))
+
+**CourseCompletion** (Target Variable): Course completion status (0: Not Completed, 1: Completed)
+
+```{r}
+# Load the data
+data <- read.csv("online_course_engagement_data.csv")
+
+# View the structure of the dataset
+str(data)
+
+```
+
+```{r}
+# Summary of the data
+summary(data)
+
+```
+
+```{r}
+# Check for missing values
+sum(is.na(data))
+```
+
+
+## Descriptive Statistics and Probability
+To describe probability as a foundation of statistical modeling, we will perform some basic descriptive statistics and visualize the distribution of key features.
+
+```{r}
+# Descriptive statistics
+summary(data)
+
+# Visualize the distribution of time spent on course
+ggplot(data, aes(x = TimeSpentOnCourse)) +
+  geom_histogram(binwidth = 1, fill = "blue", color = "black") +
+  labs(title = "Distribution of Time Spent on Course", x = "Time Spent (hours)", y = "Frequency")
+
+# Visualize the distribution of quiz scores
+ggplot(data, aes(x = QuizScores)) +
+  geom_histogram(binwidth = 5, fill = "green", color = "black") +
+  labs(title = "Distribution of Quiz Scores", x = "Quiz Scores (%)", y = "Frequency")
+
+# Visualize the distribution of course completion status
+ggplot(data, aes(x = CourseCompletion)) +
+  geom_bar(fill = "purple", color = "black") +
+  labs(title = "Distribution of Course Completion Status", x = "Course Completion (0: Not Completed, 1: Completed)", y = "Count")
+
+
+# Course completion by course category (count)
+ggplot(data, aes(x = CourseCategory, fill = CourseCompletion)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Course Completion by Course Category", x = "Course Category", y = "Count") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+## Generalized Linear Model (GLM)
+Next, we determine and apply the appropriate generalized linear model for predicting course completion status.
+
+```{r}
+# Convert CourseCompletion to a factor
+data$CourseCompletion <- as.factor(data$CourseCompletion)
+
+# Fit a logistic regression model
+glm_model <- glm(CourseCompletion ~ TimeSpentOnCourse + NumberOfVideosWatched + NumberOfQuizzesTaken + QuizScores + CompletionRate + DeviceType, 
+                 data = data, 
+                 family = binomial)
+
+# Summary of the model
+summary(glm_model)
+```
+The reduction in deviance from the null model to the residual model indicates a good fit. The AIC of the selected model is lower than that of the initial model, indicating improved performance.
+
+The stepwise selection process identified key predictors: *TimeSpentOnCourse*, *NumberOfVideosWatched*, *NumberOfQuizzesTaken*, *QuizScores*, and *CompletionRate.* These predictors significantly influence course completion, providing a well-balanced model with good fit and interpretability. This final model effectively predicts course completion while avoiding overfitting.
+
+## Model Selection
+We will conduct model selection using criteria such as AIC and BIC.
+
+Model selection helps identify the best model that balances complexity and performance. We used stepwise selection based on AIC (Akaike Information Criterion) for this purpose.
+
+**AIC:** A measure of model quality that balances goodness of fit and complexity. Lower AIC values indicate a better model.
+
+**Stepwise Selection:** Iteratively adds/removes predictors to minimize AIC, stopping when no further improvement is possible.
+
+```{r}
+# Model selection using AIC
+selected_model <- step(glm_model, direction = "both", trace = FALSE)
+
+# Compare models using AIC and BIC
+library(MuMIn)
+model_comparison <- model.sel(glm_model, selected_model)
+model_comparison
+
+```
+
+```{r}
+summary(selected_model)
+
+```
+
+
+## Model Assessment and Visualization
+Assess the fitted model and visualize the results to communicate findings to a general audience.
+
+```{r}
+# Predict probabilities of course completion
+data$PredictedProb <- predict(glm_model, type = "response")
+
+# Create a confusion matrix
+table(data$CourseCompletion, data$PredictedProb > 0.5)
+
+# Visualize predicted probabilities
+ggplot(data, aes(x = PredictedProb, fill = CourseCompletion)) +
+  geom_histogram(binwidth = 0.1, position = "dodge", color = "white") +
+  labs(title = "Predicted Probabilities of Course Completion", x = "Predicted Probability", y = "Count")
+
+```
+
+
+## ROC Curve
+
+The Receiver Operating Characteristic (ROC) curve is a graphical representation of the performance of a binary classification model. It plots the True Positive Rate (TPR) against the False Positive Rate (FPR) at various threshold settings.
+
+
+**True Positive Rate (TPR) / Sensitivity / Recall:** This is the proportion of actual positives (students who completed the course) that are correctly identified by the model. It is plotted on the Y-axis.
+
+**False Positive Rate (FPR):** This is the proportion of actual negatives (students who did not complete the course) that are incorrectly identified as positives by the model. It is plotted on the X-axis.
+
+**Thresholds:** Different points on the ROC curve correspond to different thresholds used to classify whether a student will complete the course or not. By varying the threshold, you can trade off between TPR and FPR.
+
+**Area Under the Curve (AUC):** This is a single scalar value summarizing the overall performance of the classifier. The AUC ranges from 0 to 1, where:
+
+AUC = 0.5: The model has no discrimination capability, equivalent to random guessing.
+
+AUC > 0.5: The model has some discrimination capability, with higher values indicating better performance.
+
+AUC = 1: The model has perfect discrimination capability.
+
+
+**Shape of the ROC Curve:** The closer the ROC curve follows the top-left corner (i.e., higher TPR and lower FPR), the better the model performs.
+
+**AUC Value:** The AUC value provides an aggregate measure of the model's performance. For example, an AUC of 0.85 would indicate that the model has a good performance, meaning it has a high probability of correctly distinguishing between students who will complete the course and those who will not.
+
+In the context, the ROC curve and AUC help evaluate how well the *logistic regression model* distinguishes between students who complete the course and those who do not. Let's interpret the ROC curve and AUC value from the provided code.
+
+```{r}
+
+# Plot ROC curve
+roc_curve <- roc(data$CourseCompletion, data$PredictedProb)
+plot(roc_curve, main = "ROC Curve for Course Completion Prediction")
+
+# Calculate the Area Under the Curve (AUC)
+auc_value <- auc(roc_curve)
+auc_value
+```
+
+
+
+## Communicating Results
+
+**Insights from Visualizations**:
+
+**Time Spent on Course and Quiz Scores:** Significant predictors of course completion, as more time spent and higher quiz scores are associated with higher completion rates.
+
+**Course Category:** Completion rates vary across different course categories, indicating that course type might influence completion rates.
+
+
+### Summary and Interpretation:
+
+**Descriptive Statistics**: Provided an overview of key variables like Time Spent on Course and Quiz Scores.
+
+**GLM Application**: Applied a logistic regression model to predict course completion based on engagement metrics.
+
+**Model Selection**: Used AIC and BIC criteria to select the best-fit model.
+
+**Model Assessment**: Evaluated model performance using predicted probabilities and ROC curve analysis.
+
+**Time Spent on Course**: Significant positive predictor of course completion.
+
+**Number of Videos Watched**: Also positively associated with course completion.
+
+**Quiz Scores**: Higher quiz scores increase the likelihood of completing the course.
+
+**Device Type**: Users on desktops are more likely to complete the course compared to mobile users.
+
+**Interpretation of the ROC Curve:**
+
+**AUC Value:**
+
+Here, the auc_value is 0.8697, it indicates that the model has a good ability to distinguish between students who will complete the course and those who will not.
+
+An AUC value of 0.8697 means that there is an 86.97% chance that the model will rank a randomly chosen student who completed the course higher than a randomly chosen student who did not.
+
+**Conclusion:**
+
+The ROC curve provides a visual assessment of the model's performance across different classification thresholds. The AUC quantifies this performance into a single value, making it easier to compare different models. A higher AUC value indicates a better-performing model, and in this case, it suggests that the logistic regression model is effective in predicting course completion.
